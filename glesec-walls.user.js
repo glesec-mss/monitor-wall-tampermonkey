@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.34
+// @version      1.0.35
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1486,12 +1486,19 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     const left = h('div', { class: 'flex col gap-m', style: { minHeight: '0' } }, counters, mapCard);
 
     /* RIGHT: live feed */
+    // severity badge colour comes from the SAME source as the arcs/legend (the data's `color`),
+    // so "low" reads cyan, "informational" purple, etc. — not the theme's green/orange palette.
+    const sevBadge = f => {
+      const col = f.color || SEVCOL[f.severity] || SEVCOL.high;
+      const label = String(f.severity || '').split(',')[0].trim();
+      return h('span', { class: 'sw-badge', style: '--c:' + col + ';' }, h('span', { class: 'dot' }), label);
+    };
     const mkRow = f => h('tr', null,
       h('td', { class: 'strong' }, f.client),
       h('td', null, h('span', { class: 'mono', style: { fontSize: '12px', color: 'var(--fg-muted)' } }, f.srcIp),
         h('div', { class: 'sw-subtle', style: { fontSize: '11px', textTransform: 'capitalize' } }, f.country)),
       h('td', { class: 'mono muted', style: { fontSize: '12px' } }, f.dst),
-      h('td', null, badge(f.severity, sevBadgeCls(f.severity))));
+      h('td', null, sevBadge(f)));
     const feedBody = h('tbody', null, ...d.feed.map(mkRow));
     // padding-top must be 0: any top padding leaves a gap above the sticky header where scrolling
     // rows peek through. Horizontal padding only.
