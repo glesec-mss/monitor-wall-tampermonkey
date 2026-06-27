@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.27
+// @version      1.0.28
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1379,6 +1379,15 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   };
   // deterministic 0..1 pseudo-random from a string seed (FNV-1a) — used to fan out arcs
   const hashSeed = (s) => { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
+  // receiving hubs are keyed by CLIENT (the live wall shows two: Organo Judicial + GLESEC).
+  // Organo Judicial's defended assets sit in Panama; GLESEC's GOC is in Miami — placed apart
+  // so the two converge-points read as distinct, exactly like the original map.
+  const CLIENT_HUB = { 'organo judicial': [-79.5, 9.0], glesec: [-80.2, 25.8] };
+  const hubFor = (client) => {
+    const k = String(client || '').toLowerCase().trim();
+    if (CLIENT_HUB[k]) return CLIENT_HUB[k];
+    return [-80 + (hashSeed('hx' + k) - 0.5) * 26, 12 + (hashSeed('hy' + k) - 0.5) * 18]; // scatter unknown clients
+  };
   const SEVCOL = { critical: '#ff2d55', high: '#fb923c', medium: '#fbbf24', low: '#34d399' };
   const sevBadgeCls = s => SW.sevClass(s);
   const ll = (lon, lat) => [(lon + 180) / 360 * MW, (90 - lat) / 180 * MH];
@@ -1409,22 +1418,35 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     }
     g.appendChild(land);
 
+    // receiving hubs — one per distinct CLIENT present in the feed (Organo Judicial, GLESEC, …)
+    const hub = ll(...COUNTRY.panama);                  // fallback
+    const hubs = {};
+    d.feed.forEach(f => {
+      const ck = String(f.client || '').toLowerCase().trim();
+      if (!hubs[ck]) hubs[ck] = { xy: ll(...hubFor(f.client)), label: f.client || '—' };
+    });
+
     // arcs
-    const hub = ll(...COUNTRY.panama);
     const arcs = svg('g');
     const nodes = svg('g');
     const seen = {};
-    const [hx, hy] = hub;
+    // cap travelling pulses across the feed (SMIL animateMotion is the costly part) — spread evenly
+    const dotStride = Math.max(1, Math.ceil(d.feed.length / 56));
+    // NOTE perf: NO per-arc drop-shadow filters here. Animating ~150 filtered paths is the FPS
+    // killer (each frame re-runs the filter). Glow is dropped from arcs/dots/source-nodes and kept
+    // only on the few hub cores.
     d.feed.forEach((f, i) => {
       const src = coordFor(f.country); if (!src) return;
       const [bx, by] = ll(...src);
+      const ck = String(f.client || '').toLowerCase().trim();
+      const [hx, hy] = (hubs[ck] && hubs[ck].xy) || hub;
       const col = SEVCOL[f.severity] || SEVCOL.high;
       // fan out arcs: jitter each event's origin + curve from a deterministic seed so many
       // same-country events spread into a dense bundle (mirrors the original per-IP geolocation)
       // instead of redrawing one identical centroid->hub line on top of itself.
       const r1 = hashSeed(f.srcIp + '|' + i), r2 = hashSeed(i + '|' + f.srcIp), r3 = hashSeed('lift' + f.srcIp + i);
       const x1 = bx + (r1 - 0.5) * 30, y1 = by + (r2 - 0.5) * 22;   // ±15px / ±11px scatter
-      const x2 = hx + (r2 - 0.5) * 10, y2 = hy + (r1 - 0.5) * 10;   // small spread at the hub too
+      const x2 = hx + (r2 - 0.5) * 9, y2 = hy + (r1 - 0.5) * 9;     // small spread at the hub too
       const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
       const dx = x2 - x1, dy = y2 - y1; const len = Math.hypot(dx, dy) || 1;
       const lift = Math.min(165, len * 0.35) + (r3 - 0.5) * 70;     // vary the bow so curves don't coincide
@@ -1432,39 +1454,46 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       const path = `M ${x1.toFixed(1)} ${y1.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
       const dur = (3 + (i % 5) * 0.5 + r3 * 1.2).toFixed(1);
       const flowDur = (parseFloat(dur) * 4).toFixed(1); // dash flow 4x slower than the travelling pulse
-      const p = svg('path', { d: path, fill: 'none', stroke: col, 'stroke-width': f.severity === 'critical' ? 2.4 : 1.6, 'stroke-linecap': 'round', opacity: 0.5, 'stroke-dasharray': '6 10', style: `animation:arcflow ${flowDur}s linear infinite; filter:drop-shadow(0 0 4px ${col});` });
+      const p = svg('path', { d: path, fill: 'none', stroke: col, 'stroke-width': f.severity === 'critical' ? 2.4 : 1.6, 'stroke-linecap': 'round', opacity: 0.5, 'stroke-dasharray': '6 10', style: `animation:arcflow ${flowDur}s linear infinite;` });
       arcs.appendChild(p);
-      // travelling pulse
-      const dot = svg('circle', { r: f.severity === 'critical' ? 3.4 : 2.6, fill: '#fff', style: `filter:drop-shadow(0 0 6px ${col});` });
-      const am = svg('animateMotion', { dur: dur + 's', repeatCount: 'indefinite', path, rotate: 'auto' });
-      dot.appendChild(am); arcs.appendChild(dot);
+      // travelling pulse — capped subset only
+      if (i % dotStride === 0) {
+        const dot = svg('circle', { r: f.severity === 'critical' ? 3.4 : 2.6, fill: '#fff', opacity: 0.92 });
+        const am = svg('animateMotion', { dur: dur + 's', repeatCount: 'indefinite', path, rotate: 'auto' });
+        dot.appendChild(am); arcs.appendChild(dot);
+      }
       // source node — one blip per country, anchored at the centroid (not the jittered origin)
-      const key = f.country;
-      if (!seen[key]) {
-        seen[key] = true;
+      if (!seen[f.country]) {
+        seen[f.country] = true;
         nodes.appendChild(svg('circle', { cx: bx, cy: by, r: 9, fill: 'none', stroke: col, 'stroke-width': 1.4, opacity: 0.5, style: `transform-box:fill-box; transform-origin:center; animation:blip 2.6s ease-out infinite;` }));
-        nodes.appendChild(svg('circle', { cx: bx, cy: by, r: 3.2, fill: col, style: `filter:drop-shadow(0 0 6px ${col});` }));
+        nodes.appendChild(svg('circle', { cx: bx, cy: by, r: 3.2, fill: col }));
       }
     });
     g.appendChild(arcs);
-    // hub
-    g.appendChild(svg('circle', { cx: hub[0], cy: hub[1], r: 26, fill: 'url(#hubg)', opacity: 0.6 }));
-    g.appendChild(svg('circle', { cx: hub[0], cy: hub[1], r: 16, fill: 'none', stroke: '#22d3ee', 'stroke-width': 1.4, opacity: 0.5, style: 'transform-box:fill-box;transform-origin:center;animation:blip 2.8s ease-out infinite;' }));
-    g.appendChild(svg('circle', { cx: hub[0], cy: hub[1], r: 5, fill: '#22d3ee', style: 'filter:drop-shadow(0 0 10px #22d3ee);' }));
+    // hub markers (cyan burst + blip + core + client label) — drop-shadow kept here (few elements)
+    Object.keys(hubs).forEach(ck => {
+      const [hX, hY] = hubs[ck].xy;
+      g.appendChild(svg('circle', { cx: hX, cy: hY, r: 26, fill: 'url(#hubg)', opacity: 0.6 }));
+      g.appendChild(svg('circle', { cx: hX, cy: hY, r: 16, fill: 'none', stroke: '#22d3ee', 'stroke-width': 1.4, opacity: 0.5, style: 'transform-box:fill-box;transform-origin:center;animation:blip 2.8s ease-out infinite;' }));
+      g.appendChild(svg('circle', { cx: hX, cy: hY, r: 5, fill: '#22d3ee', style: 'filter:drop-shadow(0 0 10px #22d3ee);' }));
+      const t = svg('text', { x: hX, y: hY + 19, 'text-anchor': 'middle', fill: '#7dd3fc', 'font-size': 11, 'font-weight': 700, 'font-family': 'Inter', 'letter-spacing': '0.04em', style: 'paint-order:stroke;stroke:#08080a;stroke-width:3px;stroke-linejoin:round;' });
+      t.textContent = hubs[ck].label;
+      g.appendChild(t);
+    });
     g.appendChild(nodes);
     return g;
   }
 
   const counterEb = (t) => h('div', { style: { fontSize: '10px', fontWeight: '600', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--fg-subtle)' } }, t);
-  const counterMetric = (v, col, name) => h('div', null,
-    h('div', { style: { fontFamily: 'var(--mono)', fontSize: '24px', fontWeight: '800', color: `color-mix(in srgb, ${col} 84%, white)`, lineHeight: '1' } }, SW.fmt(v)),
+  const counterMetric = (v, col, name, key) => h('div', null,
+    h('div', { 'data-ctr': key, style: { fontFamily: 'var(--mono)', fontSize: '24px', fontWeight: '800', color: `color-mix(in srgb, ${col} 84%, white)`, lineHeight: '1' } }, SW.fmt(v)),
     h('div', { style: { fontSize: '9.5px', letterSpacing: '0.06em', textTransform: 'uppercase', color: `color-mix(in srgb, ${col} 60%, white)`, marginTop: '4px' } }, name));
-  function counterTile(label, c) {
+  function counterTile(label, c, prefix) {
     return h('div', { style: { flex: '1', padding: '0 18px' } },
       counterEb(label),
       h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '11px' } },
-        counterMetric(c.critical, '#dc2626', 'Critical'),  // tailwind red-600
-        counterMetric(c.high, '#ea580c', 'High')));        // tailwind orange-600
+        counterMetric(c.critical, '#dc2626', 'Critical', prefix + '-critical'),  // tailwind red-600
+        counterMetric(c.high, '#ea580c', 'High', prefix + '-high')));            // tailwind orange-600
   }
   const counterDivider = () => h('div', { style: { width: '1px', alignSelf: 'stretch', flex: '0 0 auto', margin: '2px 0', background: 'linear-gradient(180deg, transparent, rgba(255,255,255,0.14) 18%, rgba(255,255,255,0.14) 82%, transparent)' } });
 
@@ -1506,11 +1535,11 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     /* LEFT: counters + map */
     const counters = card({ title: 'Attack Counters', sub: 'Critical & High · 1h / 24h / 7d', accent: 'red', bodyClass: 'nopad' },
       h('div', { class: 'flex', style: { alignItems: 'stretch', padding: '14px 10px 16px' } },
-        counterTile('Last 1h', d.counters['1h']),
+        counterTile('Last 1h', d.counters['1h'], '1h'),
         counterDivider(),
-        counterTile('Last 24h', d.counters['24h']),
+        counterTile('Last 24h', d.counters['24h'], '24h'),
         counterDivider(),
-        counterTile('Last 7d', d.counters['7d'])));
+        counterTile('Last 7d', d.counters['7d'], '7d')));
     const legend = h('div', {
       style: {
         position: 'absolute', left: '16px', bottom: '14px', display: 'flex', gap: '16px',
@@ -1526,7 +1555,8 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
         padding: '9px 14px', borderRadius: '10px', background: 'rgba(8,10,14,0.72)',
         border: '1px solid var(--border)', fontSize: '11.5px', color: 'var(--fg-muted)', letterSpacing: '0.04em'
       }
-    }, h('span', { style: { width: '9px', height: '9px', borderRadius: '50%', background: '#22d3ee', boxShadow: '0 0 10px #22d3ee' } }), 'Defended assets · Panama');
+    }, h('span', { style: { width: '9px', height: '9px', borderRadius: '50%', background: '#22d3ee', boxShadow: '0 0 10px #22d3ee' } }),
+      'Defended · ' + ([...new Set((d.feed || []).map(f => f.client).filter(Boolean))].slice(0, 3).join(' · ') || 'assets'));
     const mapSvgEl = worldMap(d);
     panZoom(mapSvgEl, MW, MH);
     const mapCard = card({ title: 'Live Attack Map', sub: 'Inbound · MSS-DDOS', accent: 'cyan', meta: 'realtime', bodyClass: 'nopad', class: 'grow' },
@@ -1620,9 +1650,25 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     return { account: account, status: status, counters: counters, feed: feed.slice(0, 150) };
   }
 
+  // change-detection: boot re-renders on every poll (every 5-10s), which rebuilds the SVG and
+  // restarts all arc animations -> visible jitter. We gate a full re-render on the FEED set only
+  // (account + status + the rows that drive the arcs), NOT the counters. So when only counter
+  // numbers tick, boot keeps the live map node (animations keep running) and calls refresh() to
+  // update the counters in place. The map is rebuilt only when rows actually change.
+  function signature(d) {
+    if (!d) return null;
+    const f = (d.feed || []).map(r => r.srcIp + '|' + r.country + '|' + r.severity + '|' + r.dst + '|' + r.client).sort().join(';');
+    return (d.account || '') + '#' + (d.status || '') + '#' + f;
+  }
+  function refresh(node, d) {
+    if (!node || !d) return;
+    const set = (k, v) => { const el = node.querySelector('[data-ctr="' + k + '"]'); if (el) el.textContent = SW.fmt(v); };
+    ['1h', '24h', '7d'].forEach(p => { const c = (d.counters && d.counters[p]) || {}; set(p + '-critical', c.critical || 0); set(p + '-high', c.high || 0); });
+  }
+
   (window.SW_WALLS = window.SW_WALLS || []).push({
     slug: '05-map-threat-activity', match: /^\/map-wall\//, cls: 'B',
-    endpoints: ['get-monitor-wall-map-data', 'get-widget-data-wall'], adapt, render, skel
+    endpoints: ['get-monitor-wall-map-data', 'get-widget-data-wall'], adapt, render, skel, signature, refresh
   });
 })();
 
@@ -1963,7 +2009,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   })();
 
   /* ---- 3. lifecycle state -------------------------------------------------- */
-  var state = { node: null, host: null, showEye: null, eyeHidden: false, prev: null, account: null, rendered: false, lastGoodAt: 0, suppress: false };
+  var state = { node: null, host: null, showEye: null, eyeHidden: false, prev: null, account: null, rendered: false, lastGoodAt: 0, suppress: false, sig: null };
   // per-tab eye toggle (sessionStorage is genuinely per-tab AND survives reload incl. PRTG's 120s
   // location.reload — and needs no GM grant, which @grant none wouldn't have anyway).
   try { state.eyeHidden = sessionStorage.getItem('sw-eye-' + wall.slug) === '1'; } catch (e) {}
@@ -2118,6 +2164,21 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       return;
     }
 
+    // change-detection (opt-in): if the wall exposes signature() and it matches the last render,
+    // DON'T tear down + rebuild the DOM (that restarts all CSS/SMIL animations -> visible jitter).
+    // Keep the live node, optionally do a light in-place refresh() of volatile bits (counters/clock).
+    var sig = null;
+    if (typeof wall.signature === 'function') { try { sig = wall.signature(d); } catch (e) { sig = null; } }
+    if (state.rendered && sig != null && sig === state.sig) {
+      state.prev = d;
+      if (d.account) state.account = d.account;
+      state.lastGoodAt = Date.now();
+      if (typeof wall.refresh === 'function' && state.node) { try { wall.refresh(state.node, d); } catch (e) {} }
+      try { window.__SW_LAST_D = d; } catch (e) {}
+      setIndicator('idle');
+      return;
+    }
+
     state.prev = d;
     if (d.account) state.account = d.account;
 
@@ -2129,6 +2190,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
 
     place(root);
     state.rendered = true;
+    state.sig = sig;                                    // remember what we just painted (change-detection)
     state.lastGoodAt = Date.now();
     try { window.__SW_LAST_D = d; } catch (e) {}        // debug hook (harness introspection)
     setIndicator('idle');
