@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.11
+// @version      1.0.12
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -696,6 +696,23 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   function sevFromRisk(r) { return r >= 90 ? 'critical' : r >= 70 ? 'high' : r >= 40 ? 'medium' : 'low'; }
   function signalLabel(sig) { if (!sig) return ''; if (SIGNAL[sig]) return SIGNAL[sig]; return String(sig).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
   function scopeFromPage(s) { try { const sel = s.doc && s.doc.querySelector('select'); const o = sel && sel.selectedOptions && sel.selectedOptions[0]; const t = o && o.textContent.trim(); if (t) return t; } catch (e) {} return null; }
+  // fallback: the wall renders the threat pill into the DOM (#csa-threat-text "THREAT LEVEL: YELLOW (SBEAR)"
+  // + #csa-active-count) before/independent of the csa-threat-level XHR — read it off the live page.
+  const TLABELS = { GREEN: 1, YELLOW: 2, ORANGE: 3, RED: 4, BLACK: 5 };
+  const TCODES = { NONE: 1, SBEAR: 2, TEAR: 3, TEVR: 4, INCIDENT: 5 };
+  function threatFromDom(s) {
+    try {
+      const doc = s.doc; const te = doc.getElementById('csa-threat-text') || doc.getElementById('csa-threat-pill');
+      const up = (te && te.textContent || '').toUpperCase(); if (!up) return null;
+      let tier = 0, label = '', code = '';
+      for (const k in TLABELS) if (up.indexOf(k) !== -1) { tier = TLABELS[k]; label = k; break; }
+      for (const k in TCODES) if (up.indexOf(k) !== -1) { code = k; if (!tier) tier = TCODES[k]; break; }
+      if (!tier) return null;
+      const ce = doc.getElementById('csa-active-count');
+      const cases = ce ? (+String(ce.textContent).replace(/[^0-9]/g, '') || '') : '';
+      return { tier: tier, label: label || THREAT_LABEL[tier] || '', code: code || THREAT_CODE[tier] || '', cases: cases };
+    } catch (e) { return null; }
+  }
 
   function adapt(s) {
     const radar = s.all('get-widget-data-radar');
@@ -752,13 +769,15 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     const trajectory = (pt.trajectory || 'stable').toUpperCase();
     const trajectoryCounts = { improving: pt.improving, stable: pt.stable, worsening: pt.worsening };
 
-    // threat level (may not have fired yet -> render shows UNKNOWN, fills on next poll)
+    // threat level: prefer the csa-threat-level XHR, fall back to the wall's own DOM pill,
+    // then to the last good value (so it never regresses to UNKNOWN once known)
     const tl = s.latest('csa-threat-level');
     let threat;
     if (tl && tl.max_threat_level != null && tl.max_threat_level !== '') {
       const tier = +tl.max_threat_level;
       threat = { tier, label: THREAT_LABEL[tier] || '', code: THREAT_CODE[tier] || '', cases: (tl.active_count != null ? +tl.active_count : '') };
     }
+    if (!threat) threat = threatFromDom(s) || (s.prev && s.prev.threat) || undefined;
 
     const account = scopeFromPage(s) || (s.prev && s.prev.account) || 'All Clients';
     return { account, topDomain, domains, trajectory, trajectoryCounts, conditions, threat };
@@ -1863,7 +1882,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   })();
 
   /* ---- 3. lifecycle state -------------------------------------------------- */
-  var state = { node: null, prev: null, account: null, rendered: false, lastGoodAt: 0, suppress: false };
+  var state = { node: null, host: null, prev: null, account: null, rendered: false, lastGoodAt: 0, suppress: false };
 
   function buildSources() {
     return {
@@ -1877,22 +1896,42 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     };
   }
 
-  // Mount `node` as a full-screen opaque OVERLAY above the original page — we never destroy
-  // the page's DOM, because Class B walls' own fan-out/poll (which we OBSERVE) depends on it
-  // (the _token, the widget/account registry, the placement targets). The overlay's dark theme
-  // bg fully covers the live page underneath; the page keeps fetching, we keep re-rendering.
+  // Mount as a full-viewport opaque OVERLAY above the original page — we never destroy the page's
+  // DOM, because Class B walls' own fan-out/poll (which we OBSERVE) depends on it (the _token, the
+  // widget/account registry, the placement targets). A fixed full-viewport HOST (opaque theme bg)
+  // covers the live page at ANY screen size / zoom; the 1920x1080 design is centered inside it and
+  // SCALED to fit (contain), so nothing leaks past the edges on wider-than-1920 / zoomed-out views.
+  function ensureHost() {
+    if (state.host && state.host.parentNode) return state.host;
+    var h = document.createElement('div');
+    h.id = 'sw-overlay-host';
+    h.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483646;margin:0;padding:0;' +
+      'background:#08080a;overflow:hidden;display:flex;align-items:center;justify-content:center;';
+    (document.body || document.documentElement).appendChild(h);
+    state.host = h;
+    return h;
+  }
+  function scaleToFit() {
+    if (!state.node) return;
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    if (!(s > 0)) s = 1;
+    state.node.style.transformOrigin = 'center center';
+    state.node.style.transform = 'scale(' + s + ')';
+  }
   function place(node) {
-    var host = document.body || document.documentElement;
-    if (!host) return;
     ensureStyles();                                     // re-assert theme in case the page dropped it
+    var host = ensureHost();
     state.suppress = true;
-    node.style.position = 'fixed';
-    node.style.top = '0'; node.style.left = '0';
-    node.style.zIndex = '2147483646';
     try { document.documentElement.style.overflow = 'hidden'; if (document.body) document.body.style.overflow = 'hidden'; } catch (e) {}
+    // the 1920x1080 root is a plain flex child of the host; the host does the centering + opaque fill
+    node.style.position = 'relative';
+    node.style.top = ''; node.style.left = ''; node.style.zIndex = '';
+    node.style.flex = '0 0 auto';
     if (state.node && state.node !== node && state.node.parentNode) state.node.parentNode.removeChild(state.node);
+    if (host.firstElementChild && host.firstElementChild !== node) host.innerHTML = '';
     host.appendChild(node);
     state.node = node;
+    scaleToFit();                                       // contain-scale to the current viewport
     state.suppress = false;
   }
 
@@ -1997,9 +2036,11 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     if (!document.body || !window.MutationObserver) return;
     var obs = new MutationObserver(function () {
       if (state.suppress || !state.node) return;
-      // only re-attach if the page's own re-render detached our overlay (z-index keeps us on top,
-      // so DOM order doesn't matter — avoids thrashing when the page appends its own nodes)
-      if (state.node.parentNode == null) place(state.node);
+      // re-assert only if the page's own re-render detached our overlay host (z-index keeps us on
+      // top, so DOM order doesn't matter — avoids thrashing when the page appends its own nodes)
+      if (!state.host || !state.host.parentNode || (document.body && !document.body.contains(state.host)) || state.node.parentNode !== state.host) {
+        place(state.node);
+      }
     });
     obs.observe(document.body, { childList: true });
   }
@@ -2007,6 +2048,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   /* ---- 6. go ---------------------------------------------------------------- */
   function boot() {
     ensureStyles();                                     // head is stable now — this injection persists
+    window.addEventListener('resize', scaleToFit);      // keep the design contain-scaled to the viewport
     startObserver();
     if (wall.cls === 'B') showSkeleton();               // paint shaped skeleton up front
     tryRender('init');                                  // Class A renders now from initialData
