@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.30
+// @version      1.0.31
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1380,18 +1380,15 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     g.appendChild(land);
 
     const arcs = svg('g');
-    const nodes = svg('g');
-    // distinct destination points (the POPs) and source points, keyed by rounded real coords
-    const hubs = {};      // "lat,lon" -> { x, y, label }
-    const srcSeen = {};   // "lat,lon" -> true (one blip per distinct source)
-    // cap travelling pulses (SMIL animateMotion is the costly part) — spread evenly across events
+    const hubs = {};      // distinct destination POPs, keyed by rounded real coords: "lat,lon" -> {x,y}
+    // cap travelling particles (SMIL animateMotion is the costly part) — spread evenly across events
     const dotStride = Math.max(1, Math.ceil(d.feed.length / 56));
     // NOTE perf: arcs are STATIC route-lines (painted once). Motion is carried only by the capped
     // particle set below. No per-arc filters. This keeps ~200 arcs cheap.
     d.feed.forEach((f, i) => {
       const sLat = fin(f.sLat), sLon = fin(f.sLon), eLat = fin(f.eLat), eLon = fin(f.eLon);
       if (sLat == null || sLon == null || eLat == null || eLon == null) return;   // need real geo
-      const [x1, y1] = ll(sLon, sLat);   // REAL source point
+      const [x1, y1] = ll(sLon, sLat);   // REAL source point (no marker — just where the arc starts)
       const [x2, y2] = ll(eLon, eLat);   // REAL destination point
       const col = f.color || SEVCOL[f.severity] || SEVCOL.high;   // original's own colour first
       // gentle bow so overlapping src->dst pairs separate a little (purely cosmetic, not positional)
@@ -1401,38 +1398,25 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       const cx = mx + (-dy / len) * lift, cy = my + (dx / len) * lift - 18;
       const path = `M ${x1.toFixed(1)} ${y1.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
       arcs.appendChild(svg('path', { d: path, fill: 'none', stroke: col, 'stroke-width': f.severity === 'critical' ? 2 : 1.4, 'stroke-linecap': 'round', opacity: 0.32, 'stroke-dasharray': '5 9' }));
-      // travelling particle — capped subset; honour the original's `animate` flag
+      // travelling particle — capped subset; mini dot, same hue as its arc but brighter
       if (f.animate !== false && i % dotStride === 0) {
         const dur = (2.6 + (i % 5) * 0.5 + ((i * 37) % 13) / 13 * 1.4).toFixed(1);
-        const dot = svg('circle', { r: f.severity === 'critical' ? 3.2 : 2.5, fill: '#fff', opacity: 0.95 });
+        const dot = svg('circle', { r: f.severity === 'critical' ? 2.2 : 1.8, fill: `color-mix(in srgb, ${col} 65%, white)` });
         dot.appendChild(svg('animateMotion', { dur: dur + 's', repeatCount: 'indefinite', path, rotate: 'auto' }));
         arcs.appendChild(dot);
       }
-      // one blip per distinct REAL source location
-      const sk = sLat.toFixed(2) + ',' + sLon.toFixed(2);
-      if (!srcSeen[sk]) {
-        srcSeen[sk] = true;
-        nodes.appendChild(svg('circle', { cx: x1, cy: y1, r: 7, fill: 'none', stroke: col, 'stroke-width': 1.3, opacity: 0.5, style: 'transform-box:fill-box;transform-origin:center;animation:blip 2.6s ease-out infinite;' }));
-        nodes.appendChild(svg('circle', { cx: x1, cy: y1, r: 2.8, fill: col }));
-      }
-      // register the destination POP (real coords); label by the client(s) defended there
+      // register the destination POP (real coords) — receiving hubs only
       const hk = eLat.toFixed(2) + ',' + eLon.toFixed(2);
-      if (!hubs[hk]) hubs[hk] = { x: x2, y: y2, label: f.client || f.destCountry || '' };
+      if (!hubs[hk]) hubs[hk] = { x: x2, y: y2 };
     });
     g.appendChild(arcs);
-    // destination POP markers (cyan burst + blip + core + label) — drop-shadow kept here (few)
+    // destination POP markers only (cyan burst + blip + core) — no labels, no source markers
     Object.keys(hubs).forEach(hk => {
       const H = hubs[hk];
       g.appendChild(svg('circle', { cx: H.x, cy: H.y, r: 24, fill: 'url(#hubg)', opacity: 0.6 }));
       g.appendChild(svg('circle', { cx: H.x, cy: H.y, r: 15, fill: 'none', stroke: '#22d3ee', 'stroke-width': 1.4, opacity: 0.5, style: 'transform-box:fill-box;transform-origin:center;animation:blip 2.8s ease-out infinite;' }));
       g.appendChild(svg('circle', { cx: H.x, cy: H.y, r: 4.5, fill: '#22d3ee', style: 'filter:drop-shadow(0 0 10px #22d3ee);' }));
-      if (H.label) {
-        const t = svg('text', { x: H.x, y: H.y + 18, 'text-anchor': 'middle', fill: '#7dd3fc', 'font-size': 10.5, 'font-weight': 700, 'font-family': 'Inter', 'letter-spacing': '0.04em', style: 'paint-order:stroke;stroke:#08080a;stroke-width:3px;stroke-linejoin:round;' });
-        t.textContent = H.label;
-        g.appendChild(t);
-      }
     });
-    g.appendChild(nodes);
     return g;
   }
 
