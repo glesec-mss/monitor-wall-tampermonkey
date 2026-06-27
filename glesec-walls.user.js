@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.16
+// @version      1.0.26
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -512,14 +512,14 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     });
 
     // center core
-    g.appendChild(svg('circle', { cx: c, cy: c, r: 74, fill: 'url(#coreg)', stroke: 'rgba(34,211,238,0.35)', 'stroke-width': 1.5, style: 'filter:drop-shadow(0 0 18px rgba(34,211,238,0.25));' }));
+    g.appendChild(svg('circle', { cx: c, cy: c, r: 59, fill: 'url(#coreg)', stroke: 'rgba(34,211,238,0.35)', 'stroke-width': 1.5, style: 'filter:drop-shadow(0 0 18px rgba(34,211,238,0.25));' }));
     // composite risk = mean of domains that actually returned data (no-data sectors excluded, not counted as 0)
     const active = doms.filter(x => x.hasData !== false && x.score > 0).map(x => x.score);
     const composite = active.length ? Math.round(active.reduce((a, b) => a + b, 0) / active.length) : 0;
-    const ct = svg('text', { x: c, y: c - 4, 'text-anchor': 'middle', 'dominant-baseline': 'middle', fill: '#fff', 'font-size': 44, 'font-weight': 800, 'font-family': 'Inter', 'letter-spacing': '-0.03em' });
+    const ct = svg('text', { x: c, y: c - 3, 'text-anchor': 'middle', 'dominant-baseline': 'middle', fill: '#fff', 'font-size': 35, 'font-weight': 800, 'font-family': 'Inter', 'letter-spacing': '-0.03em' });
     ct.textContent = composite + '%';
     g.appendChild(ct);
-    const cl = svg('text', { x: c, y: c + 26, 'text-anchor': 'middle', fill: 'var(--fg-subtle)', 'font-size': 10.5, 'font-weight': 600, 'letter-spacing': '0.08em', 'font-family': 'Inter' });
+    const cl = svg('text', { x: c, y: c + 21, 'text-anchor': 'middle', fill: 'var(--fg-subtle)', 'font-size': 8.4, 'font-weight': 600, 'letter-spacing': '0.08em', 'font-family': 'Inter' });
     cl.textContent = 'COMPOSITE RISK';
     g.appendChild(cl);
 
@@ -532,9 +532,9 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
         width: (maxR * 2) + 'px', height: (maxR * 2) + 'px', borderRadius: '50%',
         // trail fades out BEHIND the arm: arm leads at 0°/360° (top), trail runs counter-clockwise (320°→360°) since the sweep rotates clockwise
         background: 'conic-gradient(from 0deg, transparent 0deg 320deg, rgba(125,211,252,0) 320deg, rgba(125,211,252,0.1) 326deg, rgba(125,211,252,0.25) 356deg, rgba(125,211,252,0.25) 360deg)',
-        // cut the sweep right at the core edge (r=74) so it tucks under the core instead of washing over "74%"
-        mask: 'radial-gradient(circle at center, transparent 73px, #000 79px)',
-        WebkitMask: 'radial-gradient(circle at center, transparent 73px, #000 79px)',
+        // cut the sweep right at the core edge (r=59) so it tucks under the core instead of washing over "74%"
+        mask: 'radial-gradient(circle at center, transparent 58px, #000 64px)',
+        WebkitMask: 'radial-gradient(circle at center, transparent 58px, #000 64px)',
         animation: 'sweep 5s linear infinite'
       }
     });
@@ -549,7 +549,30 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     });
     sweepEl.appendChild(leadLine);
     g.style.position = 'relative'; g.style.zIndex = '1';
-    wrap.appendChild(sweepEl); wrap.appendChild(g);
+    // scale the whole radar (svg + sweep) up 15% as one unit — keeps every proportion intact
+    const inner = h('div', {
+      style: {
+        position: 'relative', width: S + 'px', height: S + 'px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transform: 'scale(1.15)', transformOrigin: 'center center'
+      }
+    });
+    inner.appendChild(sweepEl); inner.appendChild(g);
+    wrap.appendChild(inner);
+
+    // Pin the radar's geometric centre to the viewport's vertical centre.
+    // The card lives below the topbar + its own header, so flex-centering inside the
+    // body lands the radar low; measure the actual offset and translate the whole wrap
+    // (svg + sweep move together, so they stay aligned). Re-runs on resize.
+    const recenter = () => {
+      if (!wrap.isConnected) { requestAnimationFrame(recenter); return; }
+      wrap.style.transform = 'none';
+      const r = wrap.getBoundingClientRect();
+      const delta = (window.innerHeight / 2) - (r.top + r.height / 2);
+      wrap.style.transform = `translateY(${delta.toFixed(1)}px)`;
+    };
+    requestAnimationFrame(recenter);
+    window.addEventListener('resize', recenter);
     return wrap;
   }
 
@@ -561,7 +584,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     const cStatus = cActive.length ? { tone: cTone, label: 'Risk ' + composite } : { loading: true, label: 'No Data' };
     const root = shell({ title: 'CSA Monitor Wall · Security', sub: 'Cybersecurity Situational Awareness', account: d.account, status: cStatus });
     const main = root._main;
-    main.style.gridTemplateColumns = '340px 1fr 380px';
+    main.style.gridTemplateColumns = '380px 1fr 380px';
     main.style.gridTemplateRows = '1fr';
 
     /* LEFT */
@@ -984,7 +1007,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     const root = shell({ title: 'Threat Level & Active Conditions', sub: 'Global SOC Posture', account: d.account, status: { tone: lvlTone, label: 'LEVEL ' + d.level + ' · ' + d.code } });
     const main = root._main;
     main.style.gridTemplateRows = '1fr';
-    main.style.gridTemplateColumns = '2fr 3fr';
+    main.style.gridTemplateColumns = '3fr 2fr';
 
     /* ---- HERO BANNER (v2 option 1 — Semicircle arc) ---- */
     const col = cur.col;
@@ -1018,9 +1041,11 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       h('td', { class: 'muted' }, c.owner),
       h('td', { class: 'mono muted' }, ageStr(c.created)),
     ));
-    const casesCard = card({ title: 'Contributing TAC Cases', sub: 'Most recent · max 15', accent: 'blue', meta: d.cases.length + ' cases', bodyClass: 'nopad', class: 'grow' },
-      h('div', { style: { padding: '2px 8px' } },
-        h('table', { class: 'sw-table roomy' },
+    const casesCard = card({ title: 'Contributing TAC Cases', sub: 'Most recent', accent: 'blue', meta: d.cases.length + ' cases', bodyClass: 'nopad', class: 'grow' },
+      h('div', { style: { padding: '2px 8px', height: '100%' } },
+        // table fills the card so rows stretch vertically; cap total height to header + rows×85px
+        // (~155% of the natural ~54px row) so rows keep their height as a floor but don't over-stretch
+        h('table', { class: 'sw-table roomy', style: { height: '100%', maxHeight: (34 + d.cases.length * 85) + 'px' } },
           h('thead', null, h('tr', null, h('th', null, 'Case'), h('th', null, 'Account'), h('th', null, 'Threat Level'), h('th', null, 'Owner'), h('th', null, 'Age'))),
           h('tbody', null, ...caseRows))));
 
@@ -1069,7 +1094,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     escCard.style.flex = '3 1 0';
     const leftCol = h('div', { class: 'flex col gap-m', style: { minHeight: '0' } }, banner, countersCard, escCard);
     const rightCol = h('div', { class: 'flex col gap-m', style: { minHeight: '0' } }, casesCard);
-    main.appendChild(leftCol); main.appendChild(rightCol);
+    main.appendChild(rightCol); main.appendChild(leftCol);
     rootEl.appendChild(root);
   }
   // Loading skeleton (Class A — normally instant from window.initialData; this is for the
@@ -1084,7 +1109,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
         { title: 'Escalation Strip', sub: 'Critical only · L4 / L5', accent: 'red', archetype: 'check', cardStyle: { flex: '3 1 0' } },
       ] },
       { stack: [
-        { title: 'Contributing TAC Cases', sub: 'Most recent · max 15', accent: 'blue', meta: true, archetype: 'table', rows: 10, tcols: 5, bodyClass: 'nopad', grow: true },
+        { title: 'Contributing TAC Cases', sub: 'Most recent', accent: 'blue', meta: true, archetype: 'table', rows: 10, tcols: 5, bodyClass: 'nopad', grow: true },
       ] },
     ],
   };
@@ -1372,7 +1397,8 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       const cx = mx + (-dy / len) * lift, cy = my + (dx / len) * lift - 30;
       const path = `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
       const dur = (3 + (i % 5) * 0.5).toFixed(1);
-      const p = svg('path', { d: path, fill: 'none', stroke: col, 'stroke-width': f.severity === 'critical' ? 2.4 : 1.6, 'stroke-linecap': 'round', opacity: 0.55, 'stroke-dasharray': '6 10', style: `animation:arcflow ${dur}s linear infinite; filter:drop-shadow(0 0 4px ${col});` });
+      const flowDur = (parseFloat(dur) * 4).toFixed(1); // dash flow 4x slower than the travelling pulse
+      const p = svg('path', { d: path, fill: 'none', stroke: col, 'stroke-width': f.severity === 'critical' ? 2.4 : 1.6, 'stroke-linecap': 'round', opacity: 0.55, 'stroke-dasharray': '6 10', style: `animation:arcflow ${flowDur}s linear infinite; filter:drop-shadow(0 0 4px ${col});` });
       arcs.appendChild(p);
       // travelling pulse
       const dot = svg('circle', { r: f.severity === 'critical' ? 3.4 : 2.6, fill: '#fff', style: `filter:drop-shadow(0 0 6px ${col});` });
