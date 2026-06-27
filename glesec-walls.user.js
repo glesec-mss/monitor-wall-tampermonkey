@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.28
+// @version      1.0.29
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1379,14 +1379,20 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   };
   // deterministic 0..1 pseudo-random from a string seed (FNV-1a) — used to fan out arcs
   const hashSeed = (s) => { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
-  // receiving hubs are keyed by CLIENT (the live wall shows two: Organo Judicial + GLESEC).
-  // Organo Judicial's defended assets sit in Panama; GLESEC's GOC is in Miami — placed apart
-  // so the two converge-points read as distinct, exactly like the original map.
-  const CLIENT_HUB = { 'organo judicial': [-79.5, 9.0], glesec: [-80.2, 25.8] };
-  const hubFor = (client) => {
-    const k = String(client || '').toLowerCase().trim();
-    if (CLIENT_HUB[k]) return CLIENT_HUB[k];
-    return [-80 + (hashSeed('hx' + k) - 0.5) * 26, 12 + (hashSeed('hy' + k) - 0.5) * 18]; // scatter unknown clients
+  // Receiving hubs = GLESEC's defended POPs, geolocated from the DESTINATION IP (real per-row data,
+  // not a guess) — exactly the 3 points the original map flies into:
+  //   Panama City (Cable & Wireless 200.46.x — Organo Judicial), and GLESEC's US scrubbing
+  //   centers New York (66.22.x) and Atlanta (72.17.x).
+  const HUB_CITY = { 'Panama City': [-79.5, 9.0], 'New York': [-74.0, 40.7], 'Atlanta': [-84.4, 33.7] };
+  const DEST_PREFIX = [
+    ['200.46', 'Panama City'], ['179.63', 'Panama City'], ['190.34', 'Panama City'],
+    ['66.22', 'New York'], ['72.17', 'Atlanta']
+  ];
+  const CITY_LIST = ['Panama City', 'New York', 'Atlanta'];
+  const cityFor = (dst) => {
+    const ip = String(dst || '');
+    for (let k = 0; k < DEST_PREFIX.length; k++) if (ip.indexOf(DEST_PREFIX[k][0]) === 0) return DEST_PREFIX[k][1];
+    return CITY_LIST[Math.floor(hashSeed(ip) * CITY_LIST.length) % CITY_LIST.length]; // unknown dst -> stable among the 3
   };
   const SEVCOL = { critical: '#ff2d55', high: '#fb923c', medium: '#fbbf24', low: '#34d399' };
   const sevBadgeCls = s => SW.sevClass(s);
@@ -1418,12 +1424,12 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     }
     g.appendChild(land);
 
-    // receiving hubs — one per distinct CLIENT present in the feed (Organo Judicial, GLESEC, …)
+    // receiving hubs — one per distinct destination CITY present in the feed (the 3 POPs)
     const hub = ll(...COUNTRY.panama);                  // fallback
     const hubs = {};
     d.feed.forEach(f => {
-      const ck = String(f.client || '').toLowerCase().trim();
-      if (!hubs[ck]) hubs[ck] = { xy: ll(...hubFor(f.client)), label: f.client || '—' };
+      const city = cityFor(f.dst);
+      if (!hubs[city]) hubs[city] = { xy: ll(...HUB_CITY[city]), label: city };
     });
 
     // arcs
@@ -1438,8 +1444,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     d.feed.forEach((f, i) => {
       const src = coordFor(f.country); if (!src) return;
       const [bx, by] = ll(...src);
-      const ck = String(f.client || '').toLowerCase().trim();
-      const [hx, hy] = (hubs[ck] && hubs[ck].xy) || hub;
+      const [hx, hy] = (hubs[cityFor(f.dst)] && hubs[cityFor(f.dst)].xy) || hub;
       const col = SEVCOL[f.severity] || SEVCOL.high;
       // fan out arcs: jitter each event's origin + curve from a deterministic seed so many
       // same-country events spread into a dense bundle (mirrors the original per-IP geolocation)
@@ -1452,13 +1457,15 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       const lift = Math.min(165, len * 0.35) + (r3 - 0.5) * 70;     // vary the bow so curves don't coincide
       const cx = mx + (-dy / len) * lift, cy = my + (dx / len) * lift - 30;
       const path = `M ${x1.toFixed(1)} ${y1.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
-      const dur = (3 + (i % 5) * 0.5 + r3 * 1.2).toFixed(1);
-      const flowDur = (parseFloat(dur) * 4).toFixed(1); // dash flow 4x slower than the travelling pulse
-      const p = svg('path', { d: path, fill: 'none', stroke: col, 'stroke-width': f.severity === 'critical' ? 2.4 : 1.6, 'stroke-linecap': 'round', opacity: 0.5, 'stroke-dasharray': '6 10', style: `animation:arcflow ${flowDur}s linear infinite;` });
+      // STATIC route line — painted once, zero per-frame cost. (Animating stroke-dashoffset on
+      // ~150 long curved dashed strokes every frame was the real FPS sink.) Motion is carried only
+      // by the capped set of travelling particles below, so the map reads as "live" but stays cheap.
+      const p = svg('path', { d: path, fill: 'none', stroke: col, 'stroke-width': f.severity === 'critical' ? 2 : 1.4, 'stroke-linecap': 'round', opacity: 0.3, 'stroke-dasharray': '5 9' });
       arcs.appendChild(p);
-      // travelling pulse — capped subset only
+      // travelling particle — capped subset carries the flow toward the hub
       if (i % dotStride === 0) {
-        const dot = svg('circle', { r: f.severity === 'critical' ? 3.4 : 2.6, fill: '#fff', opacity: 0.92 });
+        const dur = (2.6 + (i % 5) * 0.5 + r3 * 1.4).toFixed(1);
+        const dot = svg('circle', { r: f.severity === 'critical' ? 3.2 : 2.5, fill: '#fff', opacity: 0.95 });
         const am = svg('animateMotion', { dur: dur + 's', repeatCount: 'indefinite', path, rotate: 'auto' });
         dot.appendChild(am); arcs.appendChild(dot);
       }
@@ -1497,35 +1504,6 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   }
   const counterDivider = () => h('div', { style: { width: '1px', alignSelf: 'stretch', flex: '0 0 auto', margin: '2px 0', background: 'linear-gradient(180deg, transparent, rgba(255,255,255,0.14) 18%, rgba(255,255,255,0.14) 82%, transparent)' } });
 
-  // Interactive zoom/pan via the SVG viewBox — keeps the exact dot-grid style (dots/arcs/animations
-  // all scale together). Walls are display-only by default; this is latent for when a pointer is used.
-  function panZoom(svg, MW, MH) {
-    let vb = { x: 0, y: 0, w: MW, h: MH };
-    const ar = MH / MW, minW = MW / 8;
-    const clamp = () => {
-      vb.w = Math.min(MW, Math.max(minW, vb.w)); vb.h = vb.w * ar;
-      vb.x = Math.min(MW - vb.w, Math.max(0, vb.x));
-      vb.y = Math.min(MH - vb.h, Math.max(0, vb.y));
-    };
-    const apply = () => svg.setAttribute('viewBox', `${vb.x.toFixed(2)} ${vb.y.toFixed(2)} ${vb.w.toFixed(2)} ${vb.h.toFixed(2)}`);
-    const toUser = (cx, cy) => { const m = svg.getScreenCTM(); if (!m) return null; const p = svg.createSVGPoint(); p.x = cx; p.y = cy; const u = p.matrixTransform(m.inverse()); return [u.x, u.y]; };
-    svg.style.cursor = 'grab'; svg.style.touchAction = 'none';
-    svg.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const u = toUser(e.clientX, e.clientY); if (!u) return;
-      const f = e.deltaY < 0 ? 0.84 : 1 / 0.84, nw = Math.min(MW, Math.max(minW, vb.w * f)), nh = nw * ar;
-      vb.x = u[0] - (u[0] - vb.x) * (nw / vb.w); vb.y = u[1] - (u[1] - vb.y) * (nh / vb.h);
-      vb.w = nw; vb.h = nh; clamp(); apply();
-    }, { passive: false });
-    let drag = null;
-    svg.addEventListener('pointerdown', (e) => { const m = svg.getScreenCTM(); if (!m) return; drag = { x: e.clientX, y: e.clientY, vx: vb.x, vy: vb.y, sx: m.a, sy: m.d }; try { svg.setPointerCapture(e.pointerId); } catch (_) {} svg.style.cursor = 'grabbing'; });
-    svg.addEventListener('pointermove', (e) => { if (!drag) return; vb.x = drag.vx - (e.clientX - drag.x) / drag.sx; vb.y = drag.vy - (e.clientY - drag.y) / drag.sy; clamp(); apply(); });
-    const end = () => { drag = null; svg.style.cursor = 'grab'; };
-    svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
-    svg.addEventListener('dblclick', () => { vb = { x: 0, y: 0, w: MW, h: MH }; apply(); });
-    return { reset: () => { vb = { x: 0, y: 0, w: MW, h: MH }; apply(); } };
-  }
-
   function render(rootEl, d) {
     const root = shell({ title: 'Threat Intelligence Activity', sub: 'Global Attack Surface', account: d.account, status: { ok: d.status === 'OPERATIONAL', label: d.status } });
     const main = root._main;
@@ -1556,9 +1534,8 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
         border: '1px solid var(--border)', fontSize: '11.5px', color: 'var(--fg-muted)', letterSpacing: '0.04em'
       }
     }, h('span', { style: { width: '9px', height: '9px', borderRadius: '50%', background: '#22d3ee', boxShadow: '0 0 10px #22d3ee' } }),
-      'Defended · ' + ([...new Set((d.feed || []).map(f => f.client).filter(Boolean))].slice(0, 3).join(' · ') || 'assets'));
-    const mapSvgEl = worldMap(d);
-    panZoom(mapSvgEl, MW, MH);
+      'Defended POPs · ' + ([...new Set((d.feed || []).map(f => cityFor(f.dst)))].join(' · ') || 'assets'));
+    const mapSvgEl = worldMap(d);   // display-only — zoom/pan removed (it was unused on the wall)
     const mapCard = card({ title: 'Live Attack Map', sub: 'Inbound · MSS-DDOS', accent: 'cyan', meta: 'realtime', bodyClass: 'nopad', class: 'grow' },
       h('div', { style: { position: 'relative', height: '100%', minHeight: '0' } }, mapSvgEl, legend, hubTag));
     const left = h('div', { class: 'flex col gap-m', style: { minHeight: '0' } }, counters, mapCard);
