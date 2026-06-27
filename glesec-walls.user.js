@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.31
+// @version      1.0.32
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1447,13 +1447,27 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
         counterTile('Last 24h', d.counters['24h'], '24h'),
         counterDivider(),
         counterTile('Last 7d', d.counters['7d'], '7d')));
+    // Legend is built from the REAL arc colours present in the data (severity -> color comes
+    // straight from get-monitor-wall-map-data), so it always matches what's drawn. Each distinct
+    // colour is labelled by its highest-ranked severity.
+    const SEV_RANK = { blocked: 0, critical: 1, high: 2, medium: 3, informational: 4, low: 5 };
+    const rank = s => (SEV_RANK[s] === undefined ? 9 : SEV_RANK[s]);
+    const legendMap = {};   // color -> severity label
+    (d.feed || []).forEach(f => {
+      const c = f.color || SEVCOL[f.severity] || SEVCOL.high;
+      const sev = String(f.severity || '').split(',')[0].trim().toLowerCase();
+      if (!sev || !c) return;
+      if (!(c in legendMap) || rank(sev) < rank(legendMap[c])) legendMap[c] = sev;
+    });
+    let legendItems = Object.keys(legendMap).map(c => [legendMap[c], c]).sort((a, b) => rank(a[0]) - rank(b[0]));
+    if (!legendItems.length) legendItems = [['high', '#ff7a00'], ['informational', '#b266ff'], ['low', '#00c8ff']];
     const legend = h('div', {
       style: {
         position: 'absolute', left: '16px', bottom: '14px', display: 'flex', gap: '16px',
         padding: '9px 14px', borderRadius: '10px', background: 'rgba(8,10,14,0.72)',
         border: '1px solid var(--border)', backdropFilter: 'blur(4px)'
       }
-    }, ...[['critical', '#ff2d55'], ['high', '#fb923c'], ['medium', '#fbbf24'], ['low', '#34d399']].map(([l, c]) =>
+    }, ...legendItems.map(([l, c]) =>
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', color: 'var(--fg-muted)', textTransform: 'capitalize', letterSpacing: '0.04em' } },
         h('span', { style: { width: '9px', height: '9px', borderRadius: '50%', background: c, boxShadow: '0 0 8px ' + c } }), l)));
     const hubTag = h('div', {
