@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.45
+// @version      1.0.46
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -624,13 +624,14 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     /* LEFT */
     // Top Risk Domain — Hero number (gallery-csa-topdomain option 3); colour tracks the score range
     const td = d.topDomain;
-    const tHex = gradeHex(td.score);
+    const tHas = td.hasData !== false;                 // false while only posture has landed
+    const tHex = tHas ? gradeHex(td.score) : '#52525b';   // neutral grey until domain data arrives
     const tMix = p => `color-mix(in srgb, ${tHex} ${p}%, white)`;
     const gradeAccent = s => s >= 75 ? 'red' : s >= 50 ? 'orange' : s >= 25 ? 'yellow' : 'green';
     const heroNum = h('div');
     heroNum.style.cssText = `flex:0 0 auto;font-family:Inter;font-size:50px;font-weight:800;line-height:0.9;background:linear-gradient(180deg,${tMix(85)},${tHex});-webkit-background-clip:text;background-clip:text;color:transparent;`;
-    heroNum.textContent = td.score;
-    const topCard = card({ title: 'Top Risk Domain', accent: gradeAccent(td.score) },
+    heroNum.textContent = tHas ? td.score : '—';
+    const topCard = card({ title: 'Top Risk Domain', accent: tHas ? gradeAccent(td.score) : undefined },
       h('div', { class: 'flex', style: { alignItems: 'center', gap: '18px' } },
         heroNum,
         h('div', { style: { minWidth: '0', borderLeft: '1px solid var(--border)', paddingLeft: '18px' } },
@@ -816,7 +817,12 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       });
     });
 
-    if (!domainRows.length && !condRows.length) return s.prev || null;   // wait for the fan-out
+    // Paint the frame as soon as ANY radar widget responds — domain, condition, OR posture. The
+    // fan-out's cheap queries (posture/no-data) return well before the expensive domain/condition
+    // aggregations on a cold load, so gating the WHOLE overlay on domain/condition data left it fully
+    // skeletoned while the original page already showed its posture widget. Render incrementally and
+    // let the slower pieces fill in (each is shown in an explicit "awaiting data" state until it lands).
+    if (!domainRows.length && !condRows.length && !posture) return s.prev || null;   // nothing at all yet
     // tolerate one widget landing before the other: fall back across types so neither card is blank
     const domSrc = domainRows.length ? domainRows : condRows;
     const condSrc = condRows.length ? condRows : domainRows;
@@ -826,9 +832,15 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     domSrc.forEach(r => { if (!best[r.domain] || r.risk > best[r.domain].risk) best[r.domain] = r; });
     const domains = DOMAINS.map(name => best[name] ? { name, score: best[name].risk, hasData: true } : { name, score: 0, hasData: false });
 
-    // top risk domain = highest-risk domain-aggregate row
-    let top = domSrc[0]; domSrc.forEach(r => { if (r.risk > top.risk) top = r; });
-    const topDomain = { name: top.domain, score: top.risk, service: top.service, reason: signalLabel(top.signal) };
+    // top risk domain = highest-risk domain-aggregate row (or an awaiting-data placeholder if only
+    // posture has landed so far — keeps the hero neutral instead of a misleading green "0")
+    let topDomain;
+    if (domSrc.length) {
+      let top = domSrc[0]; domSrc.forEach(r => { if (r.risk > top.risk) top = r; });
+      topDomain = { name: top.domain, score: top.risk, service: top.service, reason: signalLabel(top.signal), hasData: true };
+    } else {
+      topDomain = { name: '—', score: 0, service: '', reason: 'Awaiting domain data…', hasData: false };
+    }
 
     // contributing conditions: top distinct (domain+signal) condition rows by risk
     const seen = {};
