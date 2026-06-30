@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.54
+// @version      1.0.55
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -817,9 +817,11 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
         var guardEnd = Date.now() + 90000;                 // safety: never spin past ~90s
         while(ctx.alive && !ctx.ready && Date.now() < guardEnd){ await style.tick(t); if(!ctx.alive) return; }
         if(!ctx.alive) return;
-        if(ctx.ready){                                     // real data -> confirm, then wait to be swapped out
+        if(ctx.ready){                                     // real data -> confirm, signal "done", then hold until swapped out
           await style.done(t); if(!ctx.alive) return;
-          while(ctx.alive){ await sleep(ctx, 500); }
+          ctx._doneShown = true;
+          if(ctx._onDone){ var cb=ctx._onDone; ctx._onDone=null; try{ cb(); }catch(e){} }   // tell boot this console finished
+          while(ctx.alive){ await sleep(ctx, 500); }     // hold the green confirm on screen until the wall swaps us out
           return;
         }
         await sleep(ctx, 600);                              // safety expiry -> reset + loop (no false confirm)
@@ -842,7 +844,17 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     var ctx = makeCtx(term);
     var style;
     try { style = factory(v); } catch(e){ style = TERM_STYLES.shell(v); }
-    var ctrl = { el: term, finish: function(){ ctx.ready = true; }, stop: function(){ ctx.stop(); } };
+    // finish(cb): boot calls this on first real data; cb fires once THIS console has printed its
+    // green "Connected" confirmation (so boot can wait for ALL consoles before swapping the wall in).
+    var ctrl = {
+      el: term,
+      finish: function(cb){
+        ctx.ready = true;
+        if(ctx._doneShown){ if(cb){ try{ cb(); }catch(e){} } }
+        else if(cb){ ctx._onDone = cb; }
+      },
+      stop: function(){ ctx.stop(); }
+    };
     term.__swTerm = ctrl;
     runDef(ctx, style);
     return ctrl;
@@ -3154,19 +3166,23 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       log('rendered (' + (why || 'init') + ')');
     }
 
-    // First real paint after a terminal skeleton: let each console print its green
-    // "Connected" line, hold ~1s, THEN swap in the live wall. Guarded so a missing
-    // controller / throw can never block the wall (it still commits after the beat).
+    // First real paint after a terminal skeleton: tell EVERY console to finish, wait until they have
+    // ALL printed their green "Connected" line, hold a brief beat, THEN swap in the live wall — so a
+    // slow console is never cut off mid-animation. Guarded with a hard cap so the wall can't hang.
     if (!state.rendered && state.node && !state.finishing) {
       var terms = state.node.querySelectorAll ? state.node.querySelectorAll('.sw-term') : null;
       if (terms && terms.length) {
         state.finishing = true;
+        var rootToPlace = root;
+        var swapped = false, remaining = terms.length;
+        var doSwap = function () { if (swapped) return; swapped = true; commit(rootToPlace); };
+        var oneDone = function () { if (--remaining <= 0) setTimeout(doSwap, 700); };   // all said "Connected" -> short beat -> swap together
         for (var ti = 0; ti < terms.length; ti++) {
           var tc = terms[ti].__swTerm;
-          if (tc && tc.finish) { try { tc.finish(); } catch (e) {} }
+          if (tc && tc.finish) { try { tc.finish(oneDone); } catch (e) { oneDone(); } }
+          else { oneDone(); }
         }
-        var rootToPlace = root;
-        setTimeout(function () { commit(rootToPlace); }, 1200);   // ~1.2s: long enough for the green "Connected" line to land
+        setTimeout(doSwap, 6000);   // hard safety: a stuck console can never hang the wall
         return;
       }
     }
