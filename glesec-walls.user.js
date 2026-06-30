@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.52
+// @version      1.0.53
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1180,7 +1180,9 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       escN === 0
         ? h('div', { class: 'flex col center', style: { height: '100%', gap: '16px', color: 'var(--fg-subtle)' } },
             h('div', { style: { fontSize: '52px' } }, '✓'),
-            h('div', { style: { fontSize: '21px', fontWeight: '700', color: 'var(--fg-muted)' } }, 'No Active Escalations'),
+            // match wall 06 "Infrastructure & Certificates" no-active state: all fg-subtle (the
+            // brighter fg-muted/bold heading made the escalation strip's no-active state stand out)
+            h('div', { style: { fontSize: '21px', fontWeight: '600', color: 'var(--fg-subtle)' } }, 'No Active Escalations'),
             h('div', { style: { fontSize: '16px' } }, 'No cases at TEVR or Incident level'))
         : escCases.length
           ? h('div', { style: { display: 'flex', flexDirection: 'column', padding: '2px 2px' } },
