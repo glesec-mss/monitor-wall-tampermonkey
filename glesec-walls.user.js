@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.59
+// @version      1.0.60
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1652,7 +1652,8 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
      overlay node) means the live map node survives every card rebuild. The eye-toggle (show
      original) returns it to the page so the underlying wall is whole again. Offline there is no
      live Leaflet, so render() draws fallbackMap() instead. (Verify on the live wall over VPN.) */
-  const LIVE = { node: null, home: null, homeNext: null, layer: null, hidden: false, timer: null, dw: 0, dh: 0 };
+  const LIVE = { node: null, home: null, homeNext: null, layer: null, hidden: false, timer: null, dw: 0, dh: 0, zoomBumped: false, zoomBumping: false };
+  const ZOOM_BUMP = 1;   // tighten the reused Leaflet map's DEFAULT zoom by this many levels (fills more of the card)
   function findLiveMap() { try { return document.querySelector('.leaflet-container'); } catch (e) { return null; } }
   function currentTarget() { try { return document.querySelector('[data-sw-maptarget]'); } catch (e) { return null; } }
   function ensureLayer() {
@@ -1697,6 +1698,40 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   function kickResize() {
     [30, 250, 600].forEach(ms => setTimeout(() => { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }, ms));
   }
+  // The reused Leaflet map is the PAGE's own instance — the leaflet.migrationLayer demo lineage keeps
+  // it as a global, so grab it (validated by its ._container being our .leaflet-container). Read-only
+  // lookup; no page patching.
+  function getLmap() {
+    try {
+      const cands = [window.map, window.mymap, window.migrationMap, window.leafletMap, window._map];
+      for (let i = 0; i < cands.length; i++) {
+        const c = cands[i];
+        if (c && typeof c.setZoom === 'function' && typeof c.getZoom === 'function' &&
+            c._container && c._container.classList && c._container.classList.contains('leaflet-container')) return c;
+      }
+    } catch (e) {}
+    return null;
+  }
+  // Tighten the map's DEFAULT zoom once per page load. Prefer the instance (absolute getZoom()+N, and
+  // works even if the zoom control is absent); fall back to clicking the map's own hidden zoom-in
+  // button. Retries a few times so it lands AFTER the page's own init setView, then latches so it
+  // never runs away or fights the eye-toggle (the instance keeps the new zoom across detach/reattach).
+  function bumpDefaultZoom() {
+    if (LIVE.zoomBumped || LIVE.zoomBumping) return;
+    LIVE.zoomBumping = true;
+    let tries = 0;
+    (function attempt() {
+      if (LIVE.zoomBumped) { LIVE.zoomBumping = false; return; }
+      tries++;
+      try {
+        const m = getLmap();
+        if (m) { m.setZoom(m.getZoom() + ZOOM_BUMP); LIVE.zoomBumped = true; LIVE.zoomBumping = false; return; }
+        const btn = (LIVE.node || document).querySelector('.leaflet-control-zoom-in');
+        if (btn) { for (let k = 0; k < ZOOM_BUMP; k++) btn.click(); LIVE.zoomBumped = true; LIVE.zoomBumping = false; return; }
+      } catch (e) {}
+      if (tries < 8) setTimeout(attempt, 500); else LIVE.zoomBumping = false;   // give up quietly after ~4s
+    })();
+  }
   // returns true if a live Leaflet map exists (deployed) and was attached; false offline
   function attachLiveMap() {
     try {
@@ -1713,6 +1748,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       }
       alignLayer();
       if (!LIVE.timer) LIVE.timer = setInterval(alignLayer, 300);   // stay aligned across re-renders
+      bumpDefaultZoom();                                 // one-time: tighten the map's default zoom
       return true;
     } catch (e) { return false; }
   }
