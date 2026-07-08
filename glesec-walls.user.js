@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.58
+// @version      1.0.59
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1653,9 +1653,6 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
      original) returns it to the page so the underlying wall is whole again. Offline there is no
      live Leaflet, so render() draws fallbackMap() instead. (Verify on the live wall over VPN.) */
   const LIVE = { node: null, home: null, homeNext: null, layer: null, hidden: false, timer: null, dw: 0, dh: 0 };
-  // Re-frame the reused Leaflet box only (the card/grid layout is untouched): grow it MAP_GROW and
-  // slide it MAP_SHIFT_LEFT of the card width to the left. Tune these two to re-aim the map.
-  const MAP_GROW = 0.10, MAP_SHIFT_LEFT = 0.10;
   function findLiveMap() { try { return document.querySelector('.leaflet-container'); } catch (e) { return null; } }
   function currentTarget() { try { return document.querySelector('[data-sw-maptarget]'); } catch (e) { return null; } }
   function ensureLayer() {
@@ -1683,12 +1680,8 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     const r = t.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) return;
     const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080) || 1;
-    // grown on-screen box; width grows centered on the card then slides left, top stays pinned to
-    // the card body so the bigger map never rides up over the "LIVE ATTACK MAP" header.
-    const ow = r.width * (1 + MAP_GROW), oh = r.height * (1 + MAP_GROW);
-    const left = r.left - (ow - r.width) / 2 - r.width * MAP_SHIFT_LEFT;
-    const dw = ow / s, dh = oh / s;                       // DESIGN (pre-scale) box -> scale(s) below
-    L.style.left = left + 'px'; L.style.top = r.top + 'px';
+    const dw = r.width / s, dh = r.height / s;            // the card's DESIGN (unscaled) box
+    L.style.left = r.left + 'px'; L.style.top = r.top + 'px';
     L.style.transformOrigin = 'top left';
     L.style.transform = 'scale(' + s + ')';
     // Only resize the pixel box (and nudge Leaflet to re-fill it) when the DESIGN size actually
