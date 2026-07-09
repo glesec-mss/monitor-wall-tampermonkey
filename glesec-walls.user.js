@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.74
+// @version      1.0.75
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1209,11 +1209,11 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
               h('div', { style: { fontSize: '40px', fontWeight: '800', fontFamily: 'var(--mono)', color: 'var(--red)' } }, SW.fmt(escN)),
               h('div', { class: 'sw-subtle', style: { fontSize: '13px' } }, 'cases at TEVR / Incident level')));
 
-    // Level Counters : Escalation Strip height ratio = 5 : 2 (banner stays auto). Counters gets the
-    // extra height so its 5 spaced rows + bottom padding aren't cramped; the Escalation Strip is
-    // usually empty ("No Active Escalations") so it can afford to be short.
+    // Level Counters : Escalation Strip height ratio = 5 : 3 (banner stays auto). Counters gets the
+    // extra height so its 5 spaced rows + bottom padding aren't cramped, without starving the
+    // Escalation Strip's no-active state.
     countersCard.style.flex = '5 1 0';
-    escCard.style.flex = '2 1 0';
+    escCard.style.flex = '3 1 0';
     const leftCol = h('div', { class: 'flex col gap-m', style: { minHeight: '0' } }, banner, countersCard, escCard);
     const rightCol = h('div', { class: 'flex col gap-m', style: { minHeight: '0' } }, casesCard);
     main.appendChild(rightCol); main.appendChild(leftCol);
