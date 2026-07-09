@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.79
+// @version      1.0.80
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -865,7 +865,10 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       for (const k in TCODES) if (up.indexOf(k) !== -1) { code = k; if (!tier) tier = TCODES[k]; break; }
       if (!tier) return null;
       const ce = doc.getElementById('csa-active-count');
-      const cases = ce ? (+String(ce.textContent).replace(/[^0-9]/g, '') || '') : '';
+      // preserve a real 0 (the original wall renders "0"): `+x || ''` would turn 0 into '' -> "—".
+      // Only fall back to '' when the cell is genuinely empty/absent.
+      const rawCount = ce ? String(ce.textContent).replace(/[^0-9]/g, '') : '';
+      const cases = rawCount === '' ? '' : +rawCount;
       return { tier: tier, label: label || THREAT_LABEL[tier] || '', code: code || THREAT_CODE[tier] || '', cases: cases };
     } catch (e) { return null; }
   }
