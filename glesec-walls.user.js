@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.61
+// @version      1.0.62
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -2631,12 +2631,28 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
 
     place(root);
     state.rendered = true;
+    stopHydratePoll();                                  // first good paint — the hydration poll's job is done
     state.sig = sig;                                    // remember what we just painted (change-detection)
     state.lastGoodAt = Date.now();
     try { window.__SW_LAST_D = d; } catch (e) {}        // debug hook (harness introspection)
     setIndicator('idle');
     log('rendered (' + (why || 'init') + ')');
   }
+
+  // Initial-hydration poll (Class B). boot re-renders on teed-XHR/DOM events, but a wall's data can
+  // land in the page's DOM a beat AFTER the XHR that fed it resolves (05 scrapes its counters + feed
+  // from the DOM). If every render attempt happens during the XHR burst — before the page writes that
+  // DOM — adapt returns null and the skeleton sits until the NEXT poll round (up to ~60s later). So
+  // until the FIRST successful render, re-attempt adapt on a short timer; it self-stops once painted.
+  var hydrateTimer = null;
+  function startHydratePoll() {
+    if (hydrateTimer || wall.cls !== 'B') return;
+    hydrateTimer = setInterval(function () {
+      if (state.rendered) { stopHydratePoll(); return; }
+      tryRender('hydrate');
+    }, 500);
+  }
+  function stopHydratePoll() { if (hydrateTimer) { clearInterval(hydrateTimer); hydrateTimer = null; } }
 
   /* ---- 4. refresh affordances: subtle pulse + stale marker + live clock ----- */
   function indEl() {
@@ -2718,6 +2734,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     applyEyeState();                                     // restore the per-tab eye choice (show original if hidden)
     if (wall.cls === 'B') showSkeleton();               // paint shaped skeleton up front
     tryRender('init');                                  // Class A renders now from initialData
+    startHydratePoll();                                 // Class B: re-attempt until the first good paint
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
