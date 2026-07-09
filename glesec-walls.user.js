@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.60
+// @version      1.0.61
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1653,7 +1653,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
      original) returns it to the page so the underlying wall is whole again. Offline there is no
      live Leaflet, so render() draws fallbackMap() instead. (Verify on the live wall over VPN.) */
   const LIVE = { node: null, home: null, homeNext: null, layer: null, hidden: false, timer: null, dw: 0, dh: 0, zoomBumped: false, zoomBumping: false };
-  const ZOOM_BUMP = 1;   // tighten the reused Leaflet map's DEFAULT zoom by this many levels (fills more of the card)
+  const ZOOM_BUMP = 0.2;   // tighten the reused Leaflet map's DEFAULT zoom by this many levels (fractional OK — see bumpDefaultZoom)
   function findLiveMap() { try { return document.querySelector('.leaflet-container'); } catch (e) { return null; } }
   function currentTarget() { try { return document.querySelector('[data-sw-maptarget]'); } catch (e) { return null; } }
   function ensureLayer() {
@@ -1725,9 +1725,19 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       tries++;
       try {
         const m = getLmap();
-        if (m) { m.setZoom(m.getZoom() + ZOOM_BUMP); LIVE.zoomBumped = true; LIVE.zoomBumping = false; return; }
-        const btn = (LIVE.node || document).querySelector('.leaflet-control-zoom-in');
-        if (btn) { for (let k = 0; k < ZOOM_BUMP; k++) btn.click(); LIVE.zoomBumped = true; LIVE.zoomBumping = false; return; }
+        if (m) {
+          // a fractional bump needs zoomSnap=0, else Leaflet rounds it back to the base level (it
+          // also gives the user smooth fractional scroll-zoom, which is fine on this wall).
+          if (ZOOM_BUMP % 1 !== 0) { try { m.options.zoomSnap = 0; } catch (e) {} }
+          m.setZoom(m.getZoom() + ZOOM_BUMP, { animate: false });
+          LIVE.zoomBumped = true; LIVE.zoomBumping = false; return;
+        }
+        // integer-only fallback: the map's own zoom-in control steps by whole levels, so it can't do
+        // a fractional bump — skip it there and just leave the default zoom rather than over-zoom.
+        if (ZOOM_BUMP % 1 === 0) {
+          const btn = (LIVE.node || document).querySelector('.leaflet-control-zoom-in');
+          if (btn) { for (let k = 0; k < ZOOM_BUMP; k++) btn.click(); LIVE.zoomBumped = true; LIVE.zoomBumping = false; return; }
+        }
       } catch (e) {}
       if (tries < 8) setTimeout(attempt, 500); else LIVE.zoomBumping = false;   // give up quietly after ~4s
     })();
