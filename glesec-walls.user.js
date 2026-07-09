@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.77
+// @version      1.0.78
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -524,23 +524,31 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     var rnd = function (a, b) { return a + Math.random() * (b - a); };
     var pings = [];                                            // { el, born, dur, pk }
     var nextAt = 0;                                            // next spawn time (rAF ms clock)
+    // A "ping" is a short train of 3 CONCENTRIC echoes from the same point (matches the layered
+    // sonar-trail look in the style gallery): the echoes are born slightly in the PAST (staggered),
+    // so the moment a ping fires you already see 3 nested rings — brightest/smallest in the middle,
+    // fainter/larger stepping outward — which then expand + fade out together.
+    var ECHOES = 3;
     function spawn(now) {
-      if (pings.length >= 2) return;                            // subtle: at most a couple concurrent ripples
+      if (pings.length >= 6) return;                            // subtle: at most ~one ping-train's worth
       var ang = rnd(0, Math.PI * 2), r = rnd(coreR + 26, maxR - 22);     // random point on the body
       var px = c + r * Math.cos(ang), py = c + r * Math.sin(ang);
-      var dia = rnd(46, 108);
-      var el = h('div', {
-        style: {
-          position: 'absolute', left: (px - dia / 2).toFixed(1) + 'px', top: (py - dia / 2).toFixed(1) + 'px',
-          width: dia + 'px', height: dia + 'px', borderRadius: '50%', pointerEvents: 'none',
-          border: '1.5px solid rgba(239,68,68,0.2)',           // soft ring — deliberately faint, not a hard line
-          background: 'radial-gradient(circle, rgba(239,68,68,0.16) 0%, rgba(239,68,68,0.05) 55%, transparent 70%)',
-          boxShadow: '0 0 10px rgba(239,68,68,0.28)',
-          willChange: 'transform,opacity', opacity: '0', transform: 'scale(0.18)'
-        }
-      });
-      pings.push({ el: el, born: now, dur: rnd(2200, 3400), pk: rnd(0.5, 0.72) });
-      window.__SW_PING_LAYER.appendChild(el);
+      var dia = rnd(58, 118), dur = rnd(2200, 3400), pk = rnd(0.5, 0.72);
+      var stagger = 0.28 * dur;                                 // spacing between the nested rings
+      for (var k = 0; k < ECHOES; k++) {
+        var el = h('div', {
+          style: {
+            position: 'absolute', left: (px - dia / 2).toFixed(1) + 'px', top: (py - dia / 2).toFixed(1) + 'px',
+            width: dia + 'px', height: dia + 'px', borderRadius: '50%', pointerEvents: 'none',
+            border: '1.5px solid rgba(239,68,68,0.2)',           // soft ring — deliberately faint, not a hard line
+            background: 'radial-gradient(circle, rgba(239,68,68,0.16) 0%, rgba(239,68,68,0.05) 55%, transparent 70%)',
+            boxShadow: '0 0 10px rgba(239,68,68,0.28)',
+            willChange: 'transform,opacity', opacity: '0', transform: 'scale(0.18)'
+          }
+        });
+        pings.push({ el: el, born: now - k * stagger, dur: dur, pk: pk });   // older echoes started earlier
+        window.__SW_PING_LAYER.appendChild(el);
+      }
     }
     function frame(now) {
       if (!nextAt) nextAt = now + 400;                          // small initial delay
