@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.67
+// @version      1.0.68
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -2248,12 +2248,14 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     let infra;
     if (!infraRows.length) infra = { status: 'Normal', message: 'No active alerts — all systems operating normally' };
     else { const r0 = infraRows[0]; const sev = (r0['Severity'] || '').replace(/[^\x20-\x7E]/g, '').trim(); infra = { status: sev || 'Normal', message: [r0['Site_Name'], r0['Issue']].filter(Boolean).join(' — ') || 'All systems operating normally' }; }
-    // data consistency (spec §7.4): never report "no active alerts" while certificate warnings
-    // sit in the degradation table — reconcile the two panels instead of hiding the condition.
-    if (/normal/i.test(infra.status)) {
-      const certs = allDeg.filter(r => /ssl|cert/i.test(r.sensor + ' ' + r.issue)).length;
-      if (certs) infra = { status: 'Warning', message: certs + ' certificate warning' + (certs > 1 ? 's' : '') + ' active — see Degradation & Warnings' };
-    }
+    // element686 ("Infrastructure & Certificate Health") is the AUTHORITATIVE source for cert/infra
+    // state — mirror it verbatim (a genuine Warning/Critical row is already surfaced by the else-branch
+    // above). We deliberately do NOT reconcile against the degradation table: an earlier §7.4 override
+    // rewrote a "Normal" into "N certificate warnings" whenever an SSL/cert SENSOR sat in degradation,
+    // but that conflated cert-EXPIRY health (this widget) with SSL sensor-status warnings (already shown
+    // in Service Degradation & Warnings). It made this panel contradict the original wall — "2 cert
+    // warnings" while the widget said "no active alerts" — and double-reported rows that were never
+    // hidden. So no override: if element686 says Normal, we say Normal.
 
     const byClient = scrapeTable(doc, 'element688').map(r => {
       const name = r['Client'] || '';
