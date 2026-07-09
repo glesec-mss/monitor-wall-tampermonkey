@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.72
+// @version      1.0.73
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1158,12 +1158,14 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     // counters — refined bars (label + count + thin progress track)
     const cmix = (c, p, b = 'white') => `color-mix(in srgb, ${c} ${p}%, ${b})`;
     const maxC = Math.max(1, ...Object.values(d.counts));
-    const counterBody = h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } });
-    counterBody.innerHTML = [5, 4, 3, 2, 1].map((n, i) => {
+    // rows share the card height (flex:1) with a gap between them for breathing room (replaces the
+    // tight hairline dividers). Card body gets extra bottom padding below so the last bar clears the edge.
+    const counterBody = h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', gap: '11px' } });
+    counterBody.innerHTML = [5, 4, 3, 2, 1].map(n => {
       const v = d.counts[n] || 0, t = TIERS[n - 1], c = t.col, on = v > 0;
       const w = Math.max(2, v / maxC * 100);
-      return `<div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:7px 4px;${i !== 0 ? 'border-top:1px solid var(--hairline);' : ''}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      return `<div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:3px 4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;">
           <div style="display:flex;align-items:center;gap:12px;">
             <span style="width:13px;height:13px;border-radius:50%;background:${c};${on ? `box-shadow:0 0 10px ${c};` : 'opacity:.4;'}"></span>
             <span style="font-size:21px;font-weight:600;color:${on ? cmix(c, 55) : 'var(--fg-subtle)'};">L${n} · ${t.code}</span>
@@ -1174,6 +1176,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       </div>`;
     }).join('');
     const countersCard = card({ title: 'Level Counters', sub: 'Active cases by tier', accent: 'cyan' }, counterBody);
+    countersCard._body.style.paddingBottom = '24px';   // clear the bottom so the L1 bar isn't cramped against the edge
 
     // L4/L5 escalations: list the real cases at that tier; if the counts say some exist but none
     // are in the recent set, show the count. No placeholder text.
