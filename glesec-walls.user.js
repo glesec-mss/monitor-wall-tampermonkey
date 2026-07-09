@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.78
+// @version      1.0.79
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -525,16 +525,16 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     var pings = [];                                            // { el, born, dur, pk }
     var nextAt = 0;                                            // next spawn time (rAF ms clock)
     // A "ping" is a short train of 3 CONCENTRIC echoes from the same point (matches the layered
-    // sonar-trail look in the style gallery): the echoes are born slightly in the PAST (staggered),
-    // so the moment a ping fires you already see 3 nested rings — brightest/smallest in the middle,
-    // fainter/larger stepping outward — which then expand + fade out together.
+    // sonar-trail look in the style gallery). The echoes are staggered into the FUTURE — each one
+    // is born a beat after the last, and EVERY echo starts from nothing (scale 0.18, opacity 0) and
+    // fades + scales in. Rings must never pop in fully-formed, so no echo is ever born in the past.
     var ECHOES = 3;
     function spawn(now) {
       if (pings.length >= 6) return;                            // subtle: at most ~one ping-train's worth
       var ang = rnd(0, Math.PI * 2), r = rnd(coreR + 26, maxR - 22);     // random point on the body
       var px = c + r * Math.cos(ang), py = c + r * Math.sin(ang);
       var dia = rnd(58, 118), dur = rnd(2200, 3400), pk = rnd(0.5, 0.72);
-      var stagger = 0.28 * dur;                                 // spacing between the nested rings
+      var stagger = 0.28 * dur;                                 // delay between successive rings
       for (var k = 0; k < ECHOES; k++) {
         var el = h('div', {
           style: {
@@ -546,7 +546,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
             willChange: 'transform,opacity', opacity: '0', transform: 'scale(0.18)'
           }
         });
-        pings.push({ el: el, born: now - k * stagger, dur: dur, pk: pk });   // older echoes started earlier
+        pings.push({ el: el, born: now + k * stagger, dur: dur, pk: pk });   // later echoes fade in a beat later
         window.__SW_PING_LAYER.appendChild(el);
       }
     }
@@ -559,6 +559,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       }
       for (var i = pings.length - 1; i >= 0; i--) {
         var p = pings[i], t = (now - p.born) / p.dur;
+        if (t < 0) { p.el.style.opacity = '0'; continue; }      // not born yet — stay invisible (no pop-in)
         if (t >= 1) { if (p.el.parentNode) p.el.parentNode.removeChild(p.el); pings.splice(i, 1); continue; }
         var scale = 0.18 + 0.82 * t;                            // grow 0.18 -> 1
         var op = t < 0.14 ? (t / 0.14) * p.pk : p.pk * (1 - (t - 0.14) / 0.86);   // ramp in, fade out
