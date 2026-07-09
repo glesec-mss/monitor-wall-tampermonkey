@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.73
+// @version      1.0.74
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1136,14 +1136,17 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     });
     banner.innerHTML = gauge + txt;
 
-    // cases — fewer rows so each reads big from across the room
+    // cases — fewer rows so each reads big from across the room. table-layout:fixed + a colgroup
+    // (below) give every column a % share so they span the full card width evenly (no trailing gap);
+    // the free-text Account/Owner cells ellipsize so a long org name can't blow the fixed columns.
+    const ellCell = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
     const caseRows = d.cases.slice(0, 8).map(c => h('tr', null,
       h('td', { class: 'mono', style: { color: 'var(--blue)', fontSize: '21px' } }, '#' + c.id),
-      h('td', { class: 'strong' }, c.account),
+      h('td', { class: 'strong', style: ellCell }, c.account),
       h('td', null, h('span', { class: 'flex', style: { alignItems: 'center', gap: '9px', fontWeight: '600', color: `color-mix(in srgb, ${TIER[c.level].c} 62%, white)` } },
         h('span', { style: { width: '9px', height: '9px', borderRadius: '50%', flex: '0 0 auto', background: TIER[c.level].c, boxShadow: `0 0 6px color-mix(in srgb, ${TIER[c.level].c} 70%, transparent)` } }),
         'L' + c.level + ' · ' + TIER[c.level].name)),
-      h('td', { class: 'muted' }, c.owner),
+      h('td', { class: 'muted', style: ellCell }, c.owner),
       h('td', { class: 'mono muted', style: { fontSize: '21px' } }, ageStr(c.created)),
     ));
     const shownCases = Math.min(8, d.cases.length);
@@ -1151,7 +1154,13 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       h('div', { style: { padding: '2px 8px', height: '100%' } },
         // table fills the card so rows stretch vertically; cap total height to header + rows×118px
         // so the few rows go big (far-wall legibility) without over-stretching on sparse data
-        h('table', { class: 'sw-table roomy', style: { height: '100%', maxHeight: (40 + shownCases * 118) + 'px', fontSize: '23px' } },
+        h('table', { class: 'sw-table roomy', style: { height: '100%', maxHeight: (40 + shownCases * 118) + 'px', fontSize: '23px', tableLayout: 'fixed', width: '100%' } },
+          h('colgroup', null,
+            h('col', { style: { width: '13%' } }),   // Case
+            h('col', { style: { width: '24%' } }),   // Account
+            h('col', { style: { width: '22%' } }),   // Threat Level
+            h('col', { style: { width: '21%' } }),   // Owner
+            h('col', { style: { width: '20%' } })),  // Age
           h('thead', null, h('tr', null, h('th', null, 'Case'), h('th', null, 'Account'), h('th', null, 'Threat Level'), h('th', null, 'Owner'), h('th', null, 'Age'))),
           h('tbody', null, ...caseRows))));
 
@@ -1200,9 +1209,11 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
               h('div', { style: { fontSize: '40px', fontWeight: '800', fontFamily: 'var(--mono)', color: 'var(--red)' } }, SW.fmt(escN)),
               h('div', { class: 'sw-subtle', style: { fontSize: '13px' } }, 'cases at TEVR / Incident level')));
 
-    // Level Counters : Escalation Strip height ratio = 4 : 3 (banner stays auto)
-    countersCard.style.flex = '4 1 0';
-    escCard.style.flex = '3 1 0';
+    // Level Counters : Escalation Strip height ratio = 5 : 2 (banner stays auto). Counters gets the
+    // extra height so its 5 spaced rows + bottom padding aren't cramped; the Escalation Strip is
+    // usually empty ("No Active Escalations") so it can afford to be short.
+    countersCard.style.flex = '5 1 0';
+    escCard.style.flex = '2 1 0';
     const leftCol = h('div', { class: 'flex col gap-m', style: { minHeight: '0' } }, banner, countersCard, escCard);
     const rightCol = h('div', { class: 'flex col gap-m', style: { minHeight: '0' } }, casesCard);
     main.appendChild(rightCol); main.appendChild(leftCol);
