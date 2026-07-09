@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.70
+// @version      1.0.71
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1278,7 +1278,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
   function kpi(label, value, color, foot) {
     const c = KPICOL[color] || color;
     const v = h('div', null, '0');
-    v.style.cssText = `font-family:Inter;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;font-size:38px;background:linear-gradient(180deg,color-mix(in srgb, ${c} 85%, white),${c});-webkit-background-clip:text;background-clip:text;color:transparent;`;
+    v.style.cssText = `font-family:Inter;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;font-size:50px;background:linear-gradient(180deg,color-mix(in srgb, ${c} 85%, white),${c});-webkit-background-clip:text;background-clip:text;color:transparent;`;
     countUp(v, value, 1200);
     return h('div', {
       style: {
