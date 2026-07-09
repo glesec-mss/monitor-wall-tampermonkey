@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.81
+// @version      1.0.82
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -2163,13 +2163,10 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     return h('td', { class: 'mono', style: { color: 'var(--blue)', whiteSpace: 'nowrap' } }, '#' + r.case,
       r.gne ? h('div', { class: 'sw-subtle', style: { fontSize: '11px' } }, 'GNE #' + r.gne) : null);
   }
-  // Status cell shows the badge only — the assignee NAME is dropped (a full name below the wide
-  // status badge crowded the last column). Keep just the ownership-gap flag: an open case with no
-  // owner is an operational problem worth surfacing (§6). Assigned cases show nothing extra.
-  function ownerLine(r) {
-    if (!r.case || r.assignee) return null;
-    return h('div', { style: { fontSize: '11px', color: 'var(--yellow)', fontWeight: '700' } }, 'UNASSIGNED');
-  }
+  // Status cell shows the badge ONLY — no sub-label. The assignee NAME was dropped earlier (a full
+  // name below the wide status badge crowded the last column), and the "UNASSIGNED" ownership-gap
+  // flag is dropped too: it reads as clutter in the status column. (The unassigned count still lives
+  // in d.stats.unassigned for anywhere that needs the aggregate.)
   const moreMeta = (total, shown, word) => total + ' ' + word + (total > shown ? ' · +' + (total - shown) + ' more' : '');
 
   function render(rootEl, d) {
@@ -2206,7 +2203,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       h('td', { class: 'num', style: { color: 'var(--red)', whiteSpace: 'nowrap' } }, r.downtime),
       h('td', null, slaBadge(r.sla)),
       caseCell(r),
-      h('td', null, statusBadge(r.status), ownerLine(r))));
+      h('td', null, statusBadge(r.status))));
     const cdCard = card({ title: 'Critical Services Down', sub: 'Active outages', accent: 'red', meta: moreMeta(downTotal, d.criticalDown.length, 'down'), bodyClass: 'nopad' },
       h('div', { style: { padding: '2px 8px' } }, h('table', { class: 'sw-table compact' },
         h('thead', null, h('tr', null, h('th', null, '#'), h('th', null, 'Priority'), h('th', null, 'Client / Site'), h('th', null, 'Sensor / Message'), h('th', { class: 'num' }, 'Downtime'), h('th', null, 'SLA'), h('th', null, 'Case'), h('th', null, 'Status'))),
