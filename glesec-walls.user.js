@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.82
+// @version      1.0.83
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -634,10 +634,10 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     // composite risk = mean of domains that actually returned data (no-data sectors excluded, not counted as 0)
     const active = doms.filter(x => x.hasData !== false && x.score > 0).map(x => x.score);
     const composite = active.length ? Math.round(active.reduce((a, b) => a + b, 0) / active.length) : 0;
-    const ct = svg('text', { x: c, y: c - 4, 'text-anchor': 'middle', 'dominant-baseline': 'middle', fill: '#fff', 'font-size': 46, 'font-weight': 800, 'font-family': 'Inter', 'letter-spacing': '-0.03em' });
+    const ct = svg('text', { x: c, y: c - 4, 'text-anchor': 'middle', 'dominant-baseline': 'middle', fill: '#fff', 'font-size': 41.4, 'font-weight': 800, 'font-family': 'Inter', 'letter-spacing': '-0.03em' });
     ct.textContent = composite + '%';
     g.appendChild(ct);
-    const cl = svg('text', { x: c, y: c + 26, 'text-anchor': 'middle', fill: 'var(--fg-subtle)', 'font-size': 10.5, 'font-weight': 600, 'letter-spacing': '0.08em', 'font-family': 'Inter' });
+    const cl = svg('text', { x: c, y: c + 26, 'text-anchor': 'middle', fill: 'var(--fg-subtle)', 'font-size': 9.45, 'font-weight': 600, 'letter-spacing': '0.08em', 'font-family': 'Inter' });
     cl.textContent = 'COMPOSITE RISK';
     g.appendChild(cl);
 
