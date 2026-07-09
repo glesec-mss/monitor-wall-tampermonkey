@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.80
+// @version      1.0.81
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -1370,7 +1370,9 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
 /* Wall 04 — Cases / Response Command */
 (function () {
   const { h, card, badge, countUp, shell, TIER, sevClass, PRIORITY } = window.SW;
-  const slaBadge = s => s === 'breach' ? badge('SLA Breached', 'is-breach')
+  // Compact, uniform SLA labels — the column header already says "STATUS / SLA", so "Breached"
+  // reads unambiguously and (unlike "SLA Breached") never overruns the last column's right edge.
+  const slaBadge = s => s === 'breach' ? badge('Breached', 'is-breach')
     : s === 'near' ? badge('Near Breach', 'is-warn')
     : badge('On Track', 'is-ok');
   const prioCls = sevClass;   // canonical badge class (was hardcoded 'is-high' -> everything orange)
@@ -1456,13 +1458,16 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     const caseDensity = 'roomy';
     // table-layout:fixed + a colgroup gives every column a hard width; Title takes the flexible
     // remainder (auto) and ellipsizes, so nothing is clipped at the card's right edge.
+    // Fixed widths sized for each column's LONGEST possible badge (not just current data), so a
+    // worst-case row never clips: Threat fits "L5 · INCIDENT", Priority fits "Critical", Status
+    // fits "Near Breach". Title takes the flexible remainder and ellipsizes.
     const caseCols = h('colgroup', null,
       h('col', { style: { width: '90px' } }),    // Case
-      h('col', { style: { width: '162px' } }),   // Threat
+      h('col', { style: { width: '172px' } }),   // Threat  (fits "L5 · INCIDENT")
       h('col', null),                            // Title (flexible remainder)
-      h('col', { style: { width: '190px' } }),   // Account
-      h('col', { style: { width: '130px' } }),   // Priority
-      h('col', { style: { width: '170px' } }));  // Status / SLA
+      h('col', { style: { width: '182px' } }),   // Account
+      h('col', { style: { width: '142px' } }),   // Priority (fits "Critical")
+      h('col', { style: { width: '188px' } }));  // Status / SLA (fits "Near Breach")
     const casesCard = card({ title: 'Action-Required Cases', sub: 'Severe backlog', meta: 'Top ' + shownCases.length, accent: 'red', bodyClass: 'nopad', class: '' },
       h('div', { style: { padding: '2px 8px' } },
         h('table', { class: 'sw-table sw-cases-xl ' + caseDensity, style: { tableLayout: 'fixed', width: '100%', fontSize: '21px' } },
