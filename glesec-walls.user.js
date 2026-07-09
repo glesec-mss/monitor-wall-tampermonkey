@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.68
+// @version      1.0.69
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -2020,14 +2020,6 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
         h('div', { class: 'sw-kpi__label', style: { fontSize: '16px' } }, label),
         h('div', { style: { fontSize: '17px', color: 'var(--fg-subtle)', marginTop: '8px' } }, unit)));
   }
-  // compact stat tile for the case-oriented KPIs the DevOps spec adds to the top strip (§7.1)
-  function kpiCard(label, value, cls, foot) {
-    return h('div', { class: 'sw-kpi ' + (cls || '') },
-      h('div', { class: 'sw-kpi__label' }, label),
-      h('div', { class: 'sw-kpi__value tint', style: { fontSize: '48px' } }, String(value)),
-      h('div', { class: 'sw-kpi__foot' }, foot));
-  }
-
   function lineChart(p) {
     const W = 960, H = 210, padL = 8, padR = 8, padT = 14, padB = 8;
     const n = p.avg.length; const all = p.max.concat(p.min);
@@ -2065,11 +2057,12 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     return h('td', { class: 'mono', style: { color: 'var(--blue)', whiteSpace: 'nowrap' } }, '#' + r.case,
       r.gne ? h('div', { class: 'sw-subtle', style: { fontSize: '11px' } }, 'GNE #' + r.gne) : null);
   }
+  // Status cell shows the badge only — the assignee NAME is dropped (a full name below the wide
+  // status badge crowded the last column). Keep just the ownership-gap flag: an open case with no
+  // owner is an operational problem worth surfacing (§6). Assigned cases show nothing extra.
   function ownerLine(r) {
-    if (!r.case) return null;
-    return r.assignee
-      ? h('div', { class: 'sw-subtle', style: Object.assign({ fontSize: '11px' }, ell('110px')) }, r.assignee)
-      : h('div', { style: { fontSize: '11px', color: 'var(--yellow)', fontWeight: '700' } }, 'UNASSIGNED');
+    if (!r.case || r.assignee) return null;
+    return h('div', { style: { fontSize: '11px', color: 'var(--yellow)', fontWeight: '700' } }, 'UNASSIGNED');
   }
   const moreMeta = (total, shown, word) => total + ' ' + word + (total > shown ? ' · +' + (total - shown) + ' more' : '');
 
@@ -2091,13 +2084,10 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
       gaugeCard('Warning', g.warning, total, 'var(--yellow)',
         stats && stats.highWarn > 0 ? h('span', { style: { color: 'var(--yellow)', fontWeight: '700' } }, stats.highWarn + ' high priority') : 'Degraded sensors', g.warning),
     ];
-    const gauges = stats
-      ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1.18fr) repeat(2,0.92fr)', gap: '16px' } }, ...ringCards,
-          kpiCard('Open Cases', stats.openCases, 'c-blue',
-            stats.unassigned > 0 ? h('span', { style: { color: 'var(--yellow)', fontWeight: '700' } }, stats.unassigned + ' unassigned') : 'all assigned'),
-          kpiCard('SLA Breaches', stats.slaBreach, stats.slaBreach > 0 ? 'c-red' : 'c-green',
-            stats.slaBreach > 0 ? 'conditions out of SLA' : 'no breaches'))
-      : h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px' } }, ...ringCards);
+    // Top strip = the 4 original PRTG gauges only (Monitored / Available / Down / Warning), matching
+    // the original wall. The spec §7.1 Open-Cases / SLA-Breaches KPI tiles were removed for parity;
+    // the case/SLA state still lives in the two tables below (and the Down/Warning gauge subtitles).
+    const gauges = h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px' } }, ...ringCards);
 
     /* row 2: critical down + degradation
        8 columns is wide — use compact density + nowrap/ellipsis on the text cells
