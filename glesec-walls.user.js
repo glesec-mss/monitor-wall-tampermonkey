@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLESEC SKYWATCH Monitor Walls
 // @namespace    glesec-tools
-// @version      1.0.69
+// @version      1.0.70
 // @description  Restyle all 6 GLESEC SKYWATCH SOC monitor walls in place, driven by the walls' own live data. Generated — edit redesign/ source, not this file.
 // @author       GLESEC GOC
 // @match        https://intranet.glesec.com/radar-wall/*
@@ -2158,7 +2158,7 @@ window.SW_WORLD = {"dots":[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0]
     topbar: { title: 'MSS-CSM Service Health', sub: 'Continuous Service Monitoring', status: { loading: true } },
     rows: 'auto 1fr 1.12fr',
     cells: [
-      { raw: 'gaugeStrip', n: 6 },
+      { raw: 'gaugeStrip', n: 4 },
       { grid: '1.5fr 1fr', cards: [
         { title: 'Critical Services Down', sub: 'Active outages', accent: 'red', meta: true, archetype: 'table', rows: 5, tcols: 8, bodyClass: 'nopad' },
         { title: 'Service Degradation & Warnings', sub: 'Sensor warnings', accent: 'yellow', archetype: 'table', rows: 5, tcols: 6, bodyClass: 'nopad' },
